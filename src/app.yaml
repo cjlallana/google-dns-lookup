@@ -1,0 +1,15 @@
+application: cloud-support-sbt-test
+version: dns-lookup
+runtime: python27
+api_version: 1
+threadsafe: true
+
+handlers:
+- url: /
+  script: dns_lookup.app
+  
+libraries:
+- name: webapp2
+  version: latest
+- name: jinja2
+  version: latest
