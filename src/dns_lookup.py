@@ -26,10 +26,12 @@ import jinja2
 import webapp2
 
 
-class View():
 
+# Not doing anything yet, just there for further development
+class View():
+	
 	def renderHtml(self, request, template_data):
-		template = JINJA_ENVIRONMENT.get_template('templates/nslookup_auto.html')
+		template = JINJA_ENVIRONMENT.get_template('templates/dns_lookup.html')
 		request.response.write(template.render(template_data))
 
 
