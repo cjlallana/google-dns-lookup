@@ -1,8 +1,9 @@
 '''
-Created on Jan 20, 2015
+Created on 2015/01/20
+Updated on 2019/11/06
 
 @author: Carlos Lallana
-@version: 1.0
+@version: 1.5
 
 Useful links:
 
@@ -12,27 +13,11 @@ http://www.dnspython.org/
 - Static IP Addresses and App Engine apps:
 https://cloud.google.com/appengine/kb/general#static-ip
 '''
+import logging
 
-import os
-#import logging
-
-import sys
-# dns.py inside 'libs' folder, inside 'src'
-sys.path.insert(0, 'libs')
-
-from dns import resolver
-
-import jinja2
 import webapp2
-
-
-
-# Not doing anything yet, just there for further development
-class View():
-	
-	def renderHtml(self, request, template_data):
-		template = JINJA_ENVIRONMENT.get_template('templates/dns_lookup.html')
-		request.response.write(template.render(template_data))
+from dns import resolver
+from ipaddress import ip_network
 
 
 class Controller(webapp2.RequestHandler):
@@ -46,12 +31,13 @@ class Controller(webapp2.RequestHandler):
 		# Execute the query to get the resolver answer. The response will be
 		# of type 'TXT'
 		r_answer = r.query('_cloud-netblocks.googleusercontent.com', 'TXT')
-		
+
 		# For each TXT record (which is only one)...		
 		for txt_data in r_answer:
 
 			# Convert it to text to get the full netblocks info
 			all_netblocks_info = txt_data.to_text()
+			logging.info(all_netblocks_info)
 			# Replace all the extra info to get just the cloud-netblocks entries
 			all_netblocks_info = all_netblocks_info.replace('"v=spf1 ', '').replace('include:', '').replace(' ?all"','')
 			# Put them into a list
@@ -66,13 +52,17 @@ class Controller(webapp2.RequestHandler):
 				
 				# Same proccess as before, this time getting IPs
 				for txt_data in r_answer:
-					all_ips_info = txt_data.to_text()
-					all_ips_info = all_ips_info.replace('"v=spf1 ', '').replace('ip4:', '').replace(' ?all"','')
-					ips_list = all_ips_info.split()
-					for ip in ips_list:
-						ip_ranges.append(ip)
+					txt_data_str = txt_data.to_text()
+					# Remove the 'ip4' part from each entry, to better identify
+					# IPs later
+					txt_data_str = txt_data_str.replace('ip4:', '').replace('ip6', '')
+					values_list = txt_data_str.split()
 
-			
+					# IP validation: check if any of the values on each TXT
+					# entry (which contains all the SPF configs) is a valid IP
+					for value in values_list:
+						if is_valid_ip(value): ip_ranges.append(value)
+
 			# SORTING IP ADDRESSES 
 			#(http://www.secnetix.de/olli/Python/tricks.hawk#sortips)
 			for i in range(len(ip_ranges)):
@@ -83,26 +73,36 @@ class Controller(webapp2.RequestHandler):
 				ip_ranges[i] = ip_ranges[i].replace(" ", "")
 			
 			# Format the response
-			html_response = '<h1>Google IP Ranges</h1>'
-			html_response += '<h2>Resolved from _cloud-netblocks.googleusercontent.com</h2>'
+			html_response = '<h1>Google Cloud outgoing IP ranges</h1>'
+			html_response += ('<h2>Resolved as suggested in the ' +
+							'<a href="https://cloud.google.com/appengine/kb/#static-ip">docs</a></h2>')
 			
 			for i in ip_ranges:
 				html_response += '%s<br>' % (i)
 				
-			html_response += '<h3>IPs separated by comma (if useful):</h3>'
+			html_response += '<h3>List of the above IPs separated by comma (if useful):</h3>'
 			for i in ip_ranges:
 				html_response += '%s, ' % (i)
 				
-			html_response += '<br><h3>Check the code <a href="https://github.com/cjlallana/google-dns-lookup">here</a></h3>'
+			html_response += ('<br><h3>Source code ' +
+							'<a href="https://github.com/cjlallana/google-dns-lookup">here</a>!</h3>')
 			
 			self.response.out.write(html_response)
 
 
-JINJA_ENVIRONMENT = jinja2.Environment(
-	loader=jinja2.FileSystemLoader(os.path.dirname(__file__)),
-	extensions=['jinja2.ext.autoescape'],
-	autoescape=True)
+def is_valid_ip(ip_str):
 
-app = 	webapp2.WSGIApplication([
-			('/', Controller), 
-		], debug=True)
+	ip_unicode = ip_str.decode('unicode-escape')
+
+	try:
+		ip_network(ip_unicode)
+		return True
+
+	except:
+		logging.info('Not a valid IP: %s' % ip_unicode)
+		return False
+
+
+app = webapp2.WSGIApplication([
+		('/', Controller), 
+	], debug=True)
